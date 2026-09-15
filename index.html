@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FollowCheck</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f6f8;
+      margin: 0;
+      padding: 20px;
+      color: #1c1e21;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+    }
+
+    .subtitle {
+      color: #65676b;
+      font-size: 14px;
+      margin: 0 0 16px;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px dashed #ccc;
+      border-radius: 12px;
+      background: #fafafa;
+      box-sizing: border-box;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .stat-box {
+      background: #f0f2f5;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 24px;
+      font-weight: 600;
+      display: block;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #65676b;
+    }
+
+    .batch-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .batch-item a {
+      background: #0088cc;
+      color: white;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>FollowCheck</h1>
+    <p class="subtitle">Everything is analyzed on your device — nothing is uploaded.</p>
+    <input type="file" id="fileInput" accept=".zip" />
+    <p id="status"></p>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const status = document.getElementById("status");
+    const results = document.getElementById("results");
+
+    async function parseAccountsFile(zip, path) {
+      const file = zip.file(path);
+      if (!file) return [];
+
+      const htmlText = await file.async("string");
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, "text/html");
+
+      const blocks = doc.querySelectorAll("div._a6-p");
+      const accounts = [];
+
+      blocks.forEach(block => {
+        const wrapper = block.querySelector("div");
+        if (!wrapper) return;
+
+        const childDivs = wrapper.querySelectorAll(":scope > div");
+        if (childDivs.length < 2) return;
+
+        const link = childDivs[0].querySelector("a");
+        if (!link) return;
+
+        const href = link.getAttribute("href") || "";
+        const username = href.replace(/\/$/, "").split("/").pop();
+
+        accounts.push({ username });
+      });
+
+      return accounts;
+    }
+
+    function compareAccounts(following, followers) {
+      const followingUsernames = new Set(following.map(a => a.username));
+      const followersUsernames = new Set(followers.map(a => a.username));
+
+      const notFollowingBack = [...followingUsernames].filter(u => !followersUsernames.has(u));
+      const fans = [...followersUsernames].filter(u => !followingUsernames.has(u));
+      const mutuals = [...followingUsernames].filter(u => followersUsernames.has(u));
+
+      return { notFollowingBack, fans, mutuals };
+    }
+
+    async function getAccountCreatedDate(zip) {
+      const path = "security_and_login_information/login_and_profile_creation/signup_details.html";
+      const file = zip.file(path);
+      if (!file) return null;
+
+      const htmlText = await file.async("string");
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, "text/html");
+
+      const rows = doc.querySelectorAll("tr");
+      for (const row of rows) {
+        const labelCell = row.querySelector("td._a6_q");
+        if (labelCell && labelCell.textContent.trim().startsWith("Time")) {
+          const cells = row.querySelectorAll("td");
+          const dateText = cells[cells.length - 1].textContent.trim();
+          return new Date(dateText);
+        }
+      }
+      return null;
+    }
+
+    async function getActivityLevel(zip) {
+      async function extractDates(path) {
+        const file = zip.file(path);
+        if (!file) return [];
+
+        const htmlText = await file.async("string");
+        const matches = htmlText.match(/[A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2} [ap]m/g) || [];
+        return matches.map(m => new Date(m));
+      }
+
+      const postDates = await extractDates("your_instagram_activity/media/posts_1.html");
+      const storyDates = await extractDates("your_instagram_activity/media/stories.html");
+
+      const now = new Date();
+      const ninetyDaysAgo = new Date(now - 90 * 24 * 60 * 60 * 1000);
+
+      const recentPosts = postDates.filter(d => d > ninetyDaysAgo);
+      const recentStories = storyDates.filter(d => d > ninetyDaysAgo);
+
+      const activityScore = recentPosts.length * 2 + recentStories.length;
+
+      let level;
+      if (activityScore < 5) level = "light";
+      else if (activityScore < 20) level = "moderate";
+      else level = "heavy";
+
+      return { level, postsLast90Days: recentPosts.length, storiesLast90Days: recentStories.length };
+    }
+
+    function getSafeDailyLimit(accountCreated, activityLevel) {
+      const now = new Date();
+      const ageMonths = (now - accountCreated) / (1000 * 60 * 60 * 24 * 30);
+
+      let baseLimit;
+      if (ageMonths < 3) baseLimit = 12;
+      else if (ageMonths < 6) baseLimit = 20;
+      else if (ageMonths < 12) baseLimit = 35;
+      else baseLimit = 50;
+
+      const multipliers = { light: 0.7, moderate: 1.0, heavy: 1.3 };
+      const multiplier = multipliers[activityLevel] || 1.0;
+
+      return { safeLimit: Math.round(baseLimit * multiplier), ageMonths: ageMonths.toFixed(1) };
+    }
+
+    fileInput.addEventListener("change", async function () {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      status.textContent = "Reading ZIP...";
+      const zip = await JSZip.loadAsync(file);
+
+      const following = await parseAccountsFile(zip, "connections/followers_and_following/following.html");
+      const followers = await parseAccountsFile(zip, "connections/followers_and_following/followers_1.html");
+      const comparison = compareAccounts(following, followers);
+
+      const accountCreated = await getAccountCreatedDate(zip);
+      const activity = await getActivityLevel(zip);
+      const pacing = getSafeDailyLimit(accountCreated, activity.level);
+
+      status.textContent = "";
+
+      const todaysBatch = comparison.notFollowingBack.slice(0, pacing.safeLimit);
+
+      let batchHtml = "";
+      if (todaysBatch.length > 0) {
+        batchHtml = `
+          <div class="card">
+            <h3>Today's safe batch (${todaysBatch.length})</h3>
+            ${todaysBatch.map(username => `
+              <div class="batch-item">
+                <span>${username}</span>
+                <a href="https://www.instagram.com/${username}" target="_blank">Open →</a>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      results.innerHTML = `
+        <div class="card">
+          <div class="stats">
+            <div class="stat-box">
+              <span class="stat-number">${comparison.notFollowingBack.length}</span>
+              <span class="stat-label">Not following back</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-number">${comparison.fans.length}</span>
+              <span class="stat-label">Fans</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-number">${comparison.mutuals.length}</span>
+              <span class="stat-label">Mutuals</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-number">${pacing.safeLimit}</span>
+              <span class="stat-label">Safe daily limit</span>
+            </div>
+          </div>
+        </div>
+        ${batchHtml}
+      `;
+    });
+  </script>
+</body>
+</html>
