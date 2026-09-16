@@ -86,6 +86,32 @@
       margin: 4px 0;
       font-size: 14px;
     }
+
+    .spinner {
+      border: 3px solid #f0f2f5;
+      border-top: 3px solid #0088cc;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -229,7 +255,7 @@
       const file = fileInput.files[0];
       if (!file) return;
 
-      status.textContent = "Reading ZIP...";
+      status.innerHTML = '<span class="spinner"></span>Analyzing your data...';
       const zip = await JSZip.loadAsync(file);
 
       const following = await parseAccountsFile(zip, "connections/followers_and_following/following.html");
@@ -281,28 +307,30 @@
       }
 
       results.innerHTML = `
-        ${trendsHtml}
-        <div class="card">
-          <div class="stats">
-            <div class="stat-box">
-              <span class="stat-number">${comparison.notFollowingBack.length}</span>
-              <span class="stat-label">Not following back</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-number">${comparison.fans.length}</span>
-              <span class="stat-label">Fans</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-number">${comparison.mutuals.length}</span>
-              <span class="stat-label">Mutuals</span>
-            </div>
-            <div class="stat-box">
-              <span class="stat-number">${pacing.safeLimit}</span>
-              <span class="stat-label">Safe daily limit</span>
+        <div class="fade-in">
+          ${trendsHtml}
+          <div class="card">
+            <div class="stats">
+              <div class="stat-box">
+                <span class="stat-number">${comparison.notFollowingBack.length}</span>
+                <span class="stat-label">Not following back</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-number">${comparison.fans.length}</span>
+                <span class="stat-label">Fans</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-number">${comparison.mutuals.length}</span>
+                <span class="stat-label">Mutuals</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-number">${pacing.safeLimit}</span>
+                <span class="stat-label">Safe daily limit</span>
+              </div>
             </div>
           </div>
+          ${batchHtml}
         </div>
-        ${batchHtml}
       `;
     });
   </script>
