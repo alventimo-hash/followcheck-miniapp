@@ -162,6 +162,12 @@
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    .error-message {
+      color: #a32d2d;
+      font-size: 13px;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -308,86 +314,102 @@
       if (!file) return;
 
       status.innerHTML = '<span class="spinner"></span>Analyzing your data...';
-      const zip = await JSZip.loadAsync(file);
+      results.innerHTML = "";
 
-      const following = await parseAccountsFile(zip, "connections/followers_and_following/following.html");
-      const followers = await parseAccountsFile(zip, "connections/followers_and_following/followers_1.html");
-      const comparison = compareAccounts(following, followers);
+      try {
+        const zip = await JSZip.loadAsync(file);
 
-      const accountCreated = await getAccountCreatedDate(zip);
-      const activity = await getActivityLevel(zip);
-      const pacing = getSafeDailyLimit(accountCreated, activity.level);
+        // Check this is actually an Instagram export before continuing
+        const followingFile = zip.file("connections/followers_and_following/following.html");
+        const followersFile = zip.file("connections/followers_and_following/followers_1.html");
 
-      status.textContent = "";
+        if (!followingFile || !followersFile) {
+          status.innerHTML = `<span class="error-message">⚠️ This doesn't look like an Instagram data export. Please make sure you selected the correct ZIP file from Instagram's "Export your information" tool.</span>`;
+          return;
+        }
 
-      // History/trends comparison
-      const followersUsernames = new Set(followers.map(a => a.username));
-      const previous = getPreviousSnapshot();
+        const following = await parseAccountsFile(zip, "connections/followers_and_following/following.html");
+        const followers = await parseAccountsFile(zip, "connections/followers_and_following/followers_1.html");
+        const comparison = compareAccounts(following, followers);
 
-      let trendsHtml = "";
-      if (previous) {
-        const prevFollowers = new Set(previous.followers);
-        const newFollowers = [...followersUsernames].filter(u => !prevFollowers.has(u));
-        const lostFollowers = [...prevFollowers].filter(u => !followersUsernames.has(u));
+        const accountCreated = await getAccountCreatedDate(zip);
+        const activity = await getActivityLevel(zip);
+        const pacing = getSafeDailyLimit(accountCreated, activity.level);
 
-        trendsHtml = `
-          <div class="card trends-card">
-            <p>📈 Since your last check (${new Date(previous.date).toLocaleDateString()}):</p>
-            <p>+${newFollowers.length} new followers</p>
-            <p>-${lostFollowers.length} unfollowed you</p>
-          </div>
-        `;
-      }
+        status.textContent = "";
 
-      saveSnapshot(followersUsernames);
+        // History/trends comparison
+        const followersUsernames = new Set(followers.map(a => a.username));
+        const previous = getPreviousSnapshot();
 
-      const todaysBatch = comparison.notFollowingBack.slice(0, pacing.safeLimit);
+        let trendsHtml = "";
+        if (previous) {
+          const prevFollowers = new Set(previous.followers);
+          const newFollowers = [...followersUsernames].filter(u => !prevFollowers.has(u));
+          const lostFollowers = [...prevFollowers].filter(u => !followersUsernames.has(u));
 
-      let batchHtml = "";
-      if (todaysBatch.length > 0) {
-        batchHtml = `
-          <div class="card">
-            <h3>Today's safe batch (${todaysBatch.length})</h3>
-            ${todaysBatch.map(username => {
-              const initials = username.slice(0, 2).toUpperCase();
-              return `
-                <div class="batch-item">
-                  <div class="batch-avatar">${initials}</div>
-                  <span class="batch-username">${username}</span>
-                  <a href="https://www.instagram.com/${username}" target="_blank">Open →</a>
+          trendsHtml = `
+            <div class="card trends-card">
+              <p>📈 Since your last check (${new Date(previous.date).toLocaleDateString()}):</p>
+              <p>+${newFollowers.length} new followers</p>
+              <p>-${lostFollowers.length} unfollowed you</p>
+            </div>
+          `;
+        }
+
+        saveSnapshot(followersUsernames);
+
+        const todaysBatch = comparison.notFollowingBack.slice(0, pacing.safeLimit);
+
+        let batchHtml = "";
+        if (todaysBatch.length > 0) {
+          batchHtml = `
+            <div class="card">
+              <h3>Today's safe batch (${todaysBatch.length})</h3>
+              ${todaysBatch.map(username => {
+                const initials = username.slice(0, 2).toUpperCase();
+                return `
+                  <div class="batch-item">
+                    <div class="batch-avatar">${initials}</div>
+                    <span class="batch-username">${username}</span>
+                    <a href="https://www.instagram.com/${username}" target="_blank">Open →</a>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          `;
+        }
+
+        results.innerHTML = `
+          <div class="fade-in">
+            ${trendsHtml}
+            <div class="card">
+              <div class="stats">
+                <div class="stat-box">
+                  <span class="stat-number">${comparison.notFollowingBack.length}</span>
+                  <span class="stat-label">Not following back</span>
                 </div>
-              `;
-            }).join("")}
-          </div>
-        `;
-      }
-
-      results.innerHTML = `
-        <div class="fade-in">
-          ${trendsHtml}
-          <div class="card">
-            <div class="stats">
-              <div class="stat-box">
-                <span class="stat-number">${comparison.notFollowingBack.length}</span>
-                <span class="stat-label">Not following back</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-number">${comparison.fans.length}</span>
-                <span class="stat-label">Fans</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-number">${comparison.mutuals.length}</span>
-                <span class="stat-label">Mutuals</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-number">${pacing.safeLimit}</span>
-                <span class="stat-label">Safe daily limit</span>
+                <div class="stat-box">
+                  <span class="stat-number">${comparison.fans.length}</span>
+                  <span class="stat-label">Fans</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-number">${comparison.mutuals.length}</span>
+                  <span class="stat-label">Mutuals</span>
+                </div>
+                <div class="stat-box">
+                  <span class="stat-number">${pacing.safeLimit}</span>
+                  <span class="stat-label">Safe daily limit</span>
+                </div>
               </div>
             </div>
+            ${batchHtml}
           </div>
-          ${batchHtml}
-        </div>
-      `;
+        `;
+      } catch (error) {
+        console.log("Error processing file:", error);
+        status.innerHTML = `<span class="error-message">⚠️ Couldn't read this file. Please make sure you selected a valid ZIP file from Instagram's data export.</span>`;
+      }
     });
   </script>
 </body>
