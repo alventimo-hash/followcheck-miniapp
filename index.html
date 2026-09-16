@@ -20,6 +20,11 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
+    .card h3 {
+      font-size: 15px;
+      margin: 0 0 12px;
+    }
+
     h1 {
       font-size: 22px;
       margin: 0 0 4px;
@@ -68,9 +73,32 @@
     .batch-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
       padding: 10px 0;
       border-bottom: 1px solid #eee;
+    }
+
+    .batch-item:last-child {
+      border-bottom: none;
+    }
+
+    .batch-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #e6f1fb;
+      color: #185fa5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .batch-username {
+      flex: 1;
+      font-size: 14px;
     }
 
     .batch-item a {
@@ -80,6 +108,19 @@
       padding: 6px 12px;
       border-radius: 8px;
       font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .privacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f0f2f5;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      color: #65676b;
+      margin-top: 10px;
     }
 
     .trends-card p {
@@ -121,6 +162,7 @@
     <p class="subtitle">Everything is analyzed on your device — nothing is uploaded.</p>
     <input type="file" id="fileInput" accept=".zip" />
     <p id="status"></p>
+    <div class="privacy-badge">🔒 100% on-device processing</div>
   </div>
 
   <div id="results"></div>
@@ -296,12 +338,16 @@
         batchHtml = `
           <div class="card">
             <h3>Today's safe batch (${todaysBatch.length})</h3>
-            ${todaysBatch.map(username => `
-              <div class="batch-item">
-                <span>${username}</span>
-                <a href="https://www.instagram.com/${username}" target="_blank">Open →</a>
-              </div>
-            `).join("")}
+            ${todaysBatch.map(username => {
+              const initials = username.slice(0, 2).toUpperCase();
+              return `
+                <div class="batch-item">
+                  <div class="batch-avatar">${initials}</div>
+                  <span class="batch-username">${username}</span>
+                  <a href="https://www.instagram.com/${username}" target="_blank">Open →</a>
+                </div>
+              `;
+            }).join("")}
           </div>
         `;
       }
