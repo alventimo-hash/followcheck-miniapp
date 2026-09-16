@@ -81,6 +81,11 @@
       border-radius: 8px;
       font-size: 13px;
     }
+
+    .trends-card p {
+      margin: 4px 0;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -206,6 +211,20 @@
       return { safeLimit: Math.round(baseLimit * multiplier), ageMonths: ageMonths.toFixed(1) };
     }
 
+    function saveSnapshot(followersUsernames) {
+      const snapshot = {
+        date: new Date().toISOString(),
+        followers: [...followersUsernames]
+      };
+      localStorage.setItem("followcheck_last_snapshot", JSON.stringify(snapshot));
+    }
+
+    function getPreviousSnapshot() {
+      const raw = localStorage.getItem("followcheck_last_snapshot");
+      if (!raw) return null;
+      return JSON.parse(raw);
+    }
+
     fileInput.addEventListener("change", async function () {
       const file = fileInput.files[0];
       if (!file) return;
@@ -222,6 +241,27 @@
       const pacing = getSafeDailyLimit(accountCreated, activity.level);
 
       status.textContent = "";
+
+      // History/trends comparison
+      const followersUsernames = new Set(followers.map(a => a.username));
+      const previous = getPreviousSnapshot();
+
+      let trendsHtml = "";
+      if (previous) {
+        const prevFollowers = new Set(previous.followers);
+        const newFollowers = [...followersUsernames].filter(u => !prevFollowers.has(u));
+        const lostFollowers = [...prevFollowers].filter(u => !followersUsernames.has(u));
+
+        trendsHtml = `
+          <div class="card trends-card">
+            <p>📈 Since your last check (${new Date(previous.date).toLocaleDateString()}):</p>
+            <p>+${newFollowers.length} new followers</p>
+            <p>-${lostFollowers.length} unfollowed you</p>
+          </div>
+        `;
+      }
+
+      saveSnapshot(followersUsernames);
 
       const todaysBatch = comparison.notFollowingBack.slice(0, pacing.safeLimit);
 
@@ -241,6 +281,7 @@
       }
 
       results.innerHTML = `
+        ${trendsHtml}
         <div class="card">
           <div class="stats">
             <div class="stat-box">
